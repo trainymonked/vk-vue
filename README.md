@@ -1,14 +1,17 @@
-# ./
+# vk-vue
 
-This template should help get you started developing with Vue 3 in Vite.
+## Ограничения
 
-## Recommended IDE Setup
+-   Не работает в Google Chrome в режиме инкогнито (VK OpenAPI)
+    -   Почему - VK OpenAPI использует third-party куки, которые в инкогнито по умолчанию не сохраняются
+    -   Возможный фикс - переписать на чистые запросы
+-   Количество друзей для каждого пользователя не отображается при построении списка
+    -   Почему - Количество друзей пользователя можно получить только в отдельном запросе (по каждому человеку обращаться к API - не очень быстро, учитывая ограничения VK на запросы в секунду)
+    -   Возможный фикс - разделить всех пользователей на чанки по 25 и воспользоваться методом VK API execute. В 25 раз быстрее сработает, но тоже медленно
 
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur) + [TypeScript Vue Plugin (Volar)](https://marketplace.visualstudio.com/items?itemName=Vue.vscode-typescript-vue-plugin).
+## GitHub Pages
 
-## Customize configuration
-
-See [Vite Configuration Reference](https://vitejs.dev/config/).
+https://trainymonked.github.io/vk-vue/
 
 ## Project Setup
 
@@ -20,10 +23,4 @@ npm install
 
 ```sh
 npm run dev
-```
-
-### Compile and Minify for Production
-
-```sh
-npm run build
 ```

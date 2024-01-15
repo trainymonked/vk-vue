@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export const useUsersStore = defineStore('users', () => {
+export const useStore = defineStore('users', () => {
     const originalUsers = ref([])
     const friendsOfUsers = ref([])
     const maxFriendsCount = ref(0)
+    const loading = ref(false)
 
     function addOriginalUser(user) {
         if (originalUsers.value.findIndex((ou) => ou.id === user.id) === -1) {
@@ -16,5 +17,5 @@ export const useUsersStore = defineStore('users', () => {
         originalUsers.value = originalUsers.value.filter((user) => user.id !== userId)
     }
 
-    return { originalUsers, friendsOfUsers, addOriginalUser, removeOriginalUser, maxFriendsCount }
+    return { originalUsers, friendsOfUsers, addOriginalUser, removeOriginalUser, maxFriendsCount, loading }
 })
