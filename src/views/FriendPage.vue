@@ -18,50 +18,42 @@ const authors = ref([])
 const store = useStore()
 const router = useRouter()
 
-onBeforeMount(() => {
+onBeforeMount(async () => {
     store.loading = true
 
     friends.value = store.originalUsers.filter((ou) => ou.friends.includes(friendId))
 
-    VKUsersGet(
-        {
-            user_ids: friendId,
-            fields: 'photo_50',
-        },
-        ({ response }) => {
-            friend.value = response[0]
+    const { response } = await VKUsersGet({
+        user_ids: friendId,
+        fields: 'photo_50',
+    })
 
-            if (!friend.value.can_access_closed) {
-                store.loading = false
-            } else {
-                VKWallGet(
-                    {
-                        owner_id: friendId,
-                        extended: 1,
-                    },
-                    ({ response }) => {
-                        if (friend.value.can_access_closed) {
-                            wallPosts.value = response.items.map((p) => ({
-                                ...p,
-                                isRepost: !!p.copy_history,
-                            }))
-                            authors.value = response.groups
-                                .map((g) => ({ id: g.id, name: g.name, photo_50: g.photo_50 }))
-                                .concat(
-                                    response.profiles.map((p) => ({
-                                        id: p.id,
-                                        name: `${p.first_name} ${p.last_name}`,
-                                        photo_50: p.photo_50,
-                                    }))
-                                )
+    friend.value = response[0]
 
-                            store.loading = false
-                        }
-                    }
+    if (friend.value.can_access_closed) {
+        const {
+            response: { items, groups, profiles },
+        } = await VKWallGet({
+            owner_id: friendId,
+            extended: 1,
+        })
+        if (friend.value.can_access_closed) {
+            wallPosts.value = items.map((p) => ({
+                ...p,
+                isRepost: !!p.copy_history,
+            }))
+            authors.value = groups
+                .map((g) => ({ id: g.id, name: g.name, photo_50: g.photo_50 }))
+                .concat(
+                    profiles.map((p) => ({
+                        id: p.id,
+                        name: `${p.first_name} ${p.last_name}`,
+                        photo_50: p.photo_50,
+                    }))
                 )
-            }
         }
-    )
+    }
+    store.loading = false
 })
 </script>
 

@@ -2,31 +2,27 @@
 import { ref } from 'vue'
 import _ from 'lodash'
 
-import { VKUsersSearch, VKFriendsGet } from '@/services/VK'
+import { VKUsersSearch, VKFriendsGet, VKExecute } from '@/services/VK'
 import { useStore } from '@/stores/common'
-import { HIDE_DEACTIVATED } from '@/common'
+import { HIDE_DEACTIVATED, asyncForEach } from '@/common'
 
 const search = ref('')
 const users = ref([])
 
 const store = useStore()
 
-const searchUsers = _.debounce(() => {
+const searchUsers = _.debounce(async () => {
     if (search.value.trim() === '') {
         users.value = []
     } else {
         store.loading = true
-        VKUsersSearch(
-            {
-                q: search.value,
-                count: 5,
-                fields: 'photo_50,sex,bdate',
-            },
-            ({ response }) => {
-                users.value = response.items
-                store.loading = false
-            }
-        )
+        const { response } = await VKUsersSearch({
+            q: search.value,
+            count: 5,
+            fields: 'photo_50,sex,bdate',
+        })
+        users.value = response.items
+        store.loading = false
     }
 }, 500)
 
@@ -35,44 +31,65 @@ function clearSearch() {
     users.value = []
 }
 
-function buildFriendsList() {
+async function buildFriendsList() {
     store.loading = true
+    store.friendsOfUsers = []
     const uniqueUsers = []
-    store.originalUsers.forEach((user, idx) => {
-        VKFriendsGet({ user_id: user.id, fields: 'photo_50,sex,bdate' }, ({ response }) => {
-            if (response.items) {
-                store.originalUsers[idx].friends = response.items.map((i) => i.id)
-                response.items.forEach((item) => {
-                    if (uniqueUsers.findIndex((user) => user.id === item.id) === -1) {
-                        uniqueUsers.push(item)
-                    }
-                })
-            }
-            if (idx === store.originalUsers.length - 1) {
-                store.friendsOfUsers = uniqueUsers
-                    .filter((user) => store.originalUsers.findIndex((ou) => ou.id === user.id) === -1)
-                    .filter((user) => !(user.deactivated && HIDE_DEACTIVATED))
-                    .map((user) => ({
-                        ...user,
-                        friendsWithOriginalUsers: store.originalUsers.filter((ou) => ou.friends?.includes(user.id))
-                            .length,
-                    }))
-                    .sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name))
-                store.maxFriendsCount = Math.max(...store.friendsOfUsers.map((u) => u.friendsWithOriginalUsers))
-                store.loading = false
-            }
+
+    await asyncForEach(store.originalUsers, async (originalUser) => {
+        const { response } = await VKFriendsGet({ user_id: originalUser.id, fields: 'photo_50,sex,bdate' })
+        if (response.items) {
+            originalUser.friends = response.items.map((i) => i.id)
+            response.items.forEach((item) => {
+                if (!uniqueUsers.some((user) => user.id === item.id)) {
+                    uniqueUsers.push(item)
+                }
+            })
+        }
+    })
+
+    const friendsOfUsers = uniqueUsers
+        .filter((user) => !store.originalUsers.some((ou) => ou.id === user.id))
+        .filter((user) => !(user.deactivated && HIDE_DEACTIVATED))
+        .map((user) => ({
+            ...user,
+            friendsWithOriginalUsers: store.originalUsers.filter((ou) => ou.friends?.includes(user.id)).length,
+        }))
+        .sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name))
+
+    store.maxFriendsCount = Math.max(...friendsOfUsers.map((u) => u.friendsWithOriginalUsers))
+    await countAllFriends(friendsOfUsers)
+}
+
+async function countAllFriends(friendsOfUsers) {
+    const chunks = _.chunk(friendsOfUsers, 25)
+
+    await asyncForEach(chunks, async (chunk) => {
+        const ids = chunk.map((user) => user.id).join(', ')
+        const { response } = await VKExecute({
+            code: `
+                var ids = [${ids}];
+                var i = 0;
+                var result = [];
+                while(i < ids.length) {
+                    var fr = API.users.get({ "user_ids": ids[i], fields: "counters" })[0].counters.friends;
+                    result.push({ id: ids[i], friends: fr });
+                    i = i + 1;
+                }
+                return result;
+            `,
+        })
+        response.forEach(({ id, friends }) => {
+            friendsOfUsers = friendsOfUsers.map((user) => (user.id === id ? { ...user, friendsCount: friends } : user))
         })
     })
+    store.friendsOfUsers = friendsOfUsers
+    store.loading = false
 }
 
 function addUser(userId) {
-    const userById = users.value.find((user) => user.id === userId)
-    store.addOriginalUser({
-        id: userId,
-        first_name: userById.first_name,
-        last_name: userById.last_name,
-        photo_50: userById.photo_50,
-    })
+    const { first_name, last_name, photo_50 } = users.value.find((user) => user.id === userId)
+    store.addOriginalUser({ id: userId, first_name, last_name, photo_50 })
 }
 </script>
 
@@ -105,13 +122,9 @@ function addUser(userId) {
             :key="user.id"
             :title="!user.can_access_closed ? 'Это закрытый профиль' : ''"
             class="flex items-center px-4 py-1 gap-2 hover:bg-neutral-200"
-            @click="
-                user.can_access_closed &&
-                    store.originalUsers.findIndex((ou) => ou.id === user.id) === -1 &&
-                    addUser(user.id)
-            "
+            @click="user.can_access_closed && !store.originalUsers.some((ou) => ou.id === user.id) && addUser(user.id)"
             :class="
-                !user.can_access_closed || store.originalUsers.findIndex((ou) => ou.id === user.id) !== -1
+                !user.can_access_closed || store.originalUsers.some((ou) => ou.id === user.id)
                     ? 'cursor-not-allowed'
                     : 'cursor-pointer'
             "

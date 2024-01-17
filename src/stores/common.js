@@ -8,7 +8,7 @@ export const useStore = defineStore('users', () => {
     const loading = ref(false)
 
     function addOriginalUser(user) {
-        if (originalUsers.value.findIndex((ou) => ou.id === user.id) === -1) {
+        if (!originalUsers.value.some((ou) => ou.id === user.id)) {
             originalUsers.value.push(user)
         }
     }
